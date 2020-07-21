@@ -84,14 +84,8 @@ const updateMemberData = async function (req, res) {
 };
 
 const getMemberSiteData = async function (req, res) {
-    const stripePaymentProcessor = settingsCache.get('members_subscription_settings').paymentProcessors.find(
-        paymentProcessor => paymentProcessor.adapter === 'stripe'
-    );
-    const stripeSecretToken = stripePaymentProcessor && stripePaymentProcessor.config.secret_token;
-    const stripePublicToken = stripePaymentProcessor && stripePaymentProcessor.config.public_token;
-    const stripeConnectIntegration = settingsCache.get('stripe_connect_integration');
+    const isStripeConfigured = membersService.config.isStripeConnected();
 
-    const isStripeConfigured = (!!stripeSecretToken && !!stripePublicToken) || !!(stripeConnectIntegration && stripeConnectIntegration.account_id);
     const response = {
         title: settingsCache.get('title'),
         description: settingsCache.get('description'),
@@ -104,7 +98,10 @@ const getMemberSiteData = async function (req, res) {
         is_stripe_configured: isStripeConfigured,
         portal_button: settingsCache.get('portal_button'),
         portal_name: settingsCache.get('portal_name'),
-        portal_plans: settingsCache.get('portal_plans')
+        portal_plans: settingsCache.get('portal_plans'),
+        portal_button_icon: settingsCache.get('portal_button_icon'),
+        portal_button_signup_text: settingsCache.get('portal_button_signup_text'),
+        portal_button_style: settingsCache.get('portal_button_style')
     };
 
     // accent_color is currently an experimental feature

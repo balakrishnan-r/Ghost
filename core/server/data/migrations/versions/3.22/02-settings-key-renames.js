@@ -1,6 +1,6 @@
 const logging = require('../../../../../shared/logging');
 
-const renameMapping = [{
+const renameMappings = [{
     from: 'default_locale',
     to: 'lang'
 }, {
@@ -12,6 +12,21 @@ const renameMapping = [{
 }, {
     from: 'ghost_foot',
     to: 'codeinjection_foot'
+}, {
+    from: 'brand',
+    to: 'accent_color',
+    getToValue: (fromValue) => {
+        try {
+            return JSON.parse(fromValue).primaryColor || '';
+        } catch (err) {
+            return '';
+        }
+    },
+    getFromValue: (toValue) => {
+        return JSON.stringify({
+            primaryColor: toValue || ''
+        });
+    }
 }];
 
 module.exports = {
@@ -20,61 +35,54 @@ module.exports = {
     },
 
     async up(options) {
-        await Promise.map(renameMapping, async (renameMap) => {
-            logging.info(`Renaming ${renameMap.from} to ${renameMap.to}`);
+        for (const renameMapping of renameMappings) {
+            const oldSetting = await options.transacting('settings')
+                .where('key', renameMapping.from)
+                .select('value')
+                .first();
 
-            return await options
-                .transacting('settings')
-                .where('key', renameMap.from)
-                .update({
-                    key: renameMap.to
-                });
-        });
+            if (!oldSetting) {
+                logging.warn(`Could not find setting ${renameMapping.from}, not updating ${renameMapping.to} value`);
+                continue;
+            }
 
-        const brandResult = await options
-            .transacting('settings')
-            .where('key', 'brand')
-            .select('value');
+            const updatedValue = renameMapping.getToValue ? renameMapping.getToValue(oldSetting.value) : oldSetting.value;
 
-        const value = JSON.parse(brandResult[0].value);
-        const accentColor = value.primaryColor || '';
+            logging.info(`Updating ${renameMapping.to} with value from ${renameMapping.from}`);
+            await options.transacting('settings')
+                .where('key', renameMapping.to)
+                .update('value', updatedValue);
 
-        logging.info(`Updating brand.primaryColor in settings to accent_color with value '${accentColor}'`);
-
-        return await options
-            .transacting('settings')
-            .where('key', 'brand')
-            .update('key', 'accent_color')
-            .update('value', accentColor);
+            logging.info(`Deleting ${renameMapping.from}`);
+            await options.transacting('settings')
+                .where('key', renameMapping.from)
+                .del();
+        }
     },
 
     async down(options) {
-        await Promise.map(renameMapping, async (renameMap) => {
-            logging.info(`Renaming ${renameMap.to} to ${renameMap.from}`);
+        for (const renameMapping of renameMappings) {
+            const newSetting = await options.transacting('settings')
+                .where('key', renameMapping.to)
+                .select('value')
+                .first();
 
-            return await options
-                .transacting('settings')
-                .where('key', renameMap.to)
-                .update({
-                    key: renameMap.from
-                });
-        });
+            if (!newSetting) {
+                logging.warn(`Could not find setting ${renameMapping.to}, not updating ${renameMapping.from} value`);
+                continue;
+            }
 
-        let accentColor = await options
-            .transacting('settings')
-            .where('key', 'accent_color')
-            .select('value');
+            const updatedValue = renameMapping.getFromValue ? renameMapping.getFromValue(newSetting.value) : newSetting.value;
 
-        const primaryColor = accentColor[0].value || '';
+            logging.info(`Updating ${renameMapping.from} with value from ${renameMapping.to}`);
+            await options.transacting('settings')
+                .where('key', renameMapping.from)
+                .update('value', updatedValue);
 
-        logging.info(`Updating accent_color in settings to brand.primaryColor with value '${primaryColor}'`);
-
-        return await options
-            .transacting('settings')
-            .where('key', 'accent_color')
-            .update('key', 'brand')
-            .update('value', JSON.stringify({
-                primaryColor
-            }));
+            logging.info(`Deleting ${renameMapping.from}`);
+            await options.transacting('settings')
+                .where('key', renameMapping.from)
+                .del();
+        }
     }
 };

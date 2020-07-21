@@ -70,6 +70,26 @@ describe('Members API', function () {
             });
     });
 
+    it('Can search for paid members', function () {
+        return request
+            .get(localUtils.API.getApiQuery('members/?search=egon&paid=true'))
+            .set('Origin', config.get('url'))
+            .expect('Content-Type', /json/)
+            .expect('Cache-Control', testUtils.cacheRules.private)
+            .expect(200)
+            .then((res) => {
+                should.not.exist(res.headers['x-cache-invalidate']);
+                const jsonResponse = res.body;
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.members);
+                jsonResponse.members.should.have.length(1);
+                jsonResponse.members[0].email.should.equal('paid@test.com');
+                localUtils.API.checkResponse(jsonResponse, 'members');
+                localUtils.API.checkResponse(jsonResponse.members[0], 'member', 'stripe');
+                localUtils.API.checkResponse(jsonResponse.meta.pagination, 'pagination');
+            });
+    });
+
     it('Add should fail when passing incorrect email_type query parameter', function () {
         const member = {
             name: 'test',
@@ -136,7 +156,7 @@ describe('Members API', function () {
             });
     });
 
-    it('Can import CSV with minimum one field', function () {
+    it('Can import CSV with minimum one field and labels', function () {
         return request
             .post(localUtils.API.getApiQuery(`members/upload/`))
             .field('labels', ['global-label-1', 'global-label-1'])
@@ -181,6 +201,55 @@ describe('Members API', function () {
                 importedMember1.stripe.should.not.be.undefined();
                 importedMember1.stripe.subscriptions.length.should.equal(0);
                 importedMember1.labels.length.should.equal(2);
+            });
+    });
+
+    it('Can import CSV with mapped fields', function () {
+        return request
+            .post(localUtils.API.getApiQuery(`members/upload/`))
+            .field('mapping[email]', 'correo_electrpnico')
+            .field('mapping[name]', 'nombre')
+            .attach('membersfile', path.join(__dirname, '/../../../../utils/fixtures/csv/members-with-mappings.csv'))
+            .set('Origin', config.get('url'))
+            .expect('Content-Type', /json/)
+            .expect('Cache-Control', testUtils.cacheRules.private)
+            .expect(201)
+            .then((res) => {
+                should.not.exist(res.headers['x-cache-invalidate']);
+                const jsonResponse = res.body;
+
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.meta);
+                should.exist(jsonResponse.meta.stats);
+
+                jsonResponse.meta.stats.imported.count.should.equal(1);
+                jsonResponse.meta.stats.invalid.count.should.equal(0);
+            })
+            .then(() => {
+                return request
+                    .get(localUtils.API.getApiQuery(`members/?search=${encodeURIComponent('member+mapped_1@example.com')}`))
+                    .set('Origin', config.get('url'))
+                    .expect('Content-Type', /json/)
+                    .expect('Cache-Control', testUtils.cacheRules.private)
+                    .expect(200);
+            })
+            .then((res) => {
+                should.not.exist(res.headers['x-cache-invalidate']);
+                const jsonResponse = res.body;
+
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.members);
+                should.exist(jsonResponse.members[0]);
+
+                const importedMember1 = jsonResponse.members[0];
+                should(importedMember1.email).equal('member+mapped_1@example.com');
+                should(importedMember1.name).equal('Hannah');
+                should(importedMember1.note).equal('no need to map me');
+                importedMember1.subscribed.should.equal(true);
+                importedMember1.comped.should.equal(false);
+                importedMember1.stripe.should.not.be.undefined();
+                importedMember1.stripe.subscriptions.length.should.equal(0);
+                importedMember1.labels.length.should.equal(0);
             });
     });
 
@@ -274,7 +343,7 @@ describe('Members API', function () {
                 should.exist(jsonResponse.new_today);
 
                 // 3 from fixtures and 5 imported in previous tests
-                jsonResponse.total.should.equal(7);
+                jsonResponse.total.should.equal(8);
             });
     });
 
@@ -298,7 +367,7 @@ describe('Members API', function () {
                 should.exist(jsonResponse.new_today);
 
                 // 3 from fixtures and 5 imported in previous tests
-                jsonResponse.total.should.equal(7);
+                jsonResponse.total.should.equal(8);
             });
     });
 
@@ -322,7 +391,7 @@ describe('Members API', function () {
                 should.exist(jsonResponse.new_today);
 
                 // 3 from fixtures and 5 imported in previous tests
-                jsonResponse.total.should.equal(7);
+                jsonResponse.total.should.equal(8);
             });
     });
 
